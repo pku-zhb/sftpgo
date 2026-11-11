@@ -17,6 +17,7 @@ package httpd
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"sync"
 	"time"
 
@@ -63,7 +64,10 @@ func (m *memoryTokenManager) Cleanup() {
 	})
 }
 
-type dbTokenManager struct{}
+type dbTokenManager struct {
+	// Long browser sessions only persist token hashes, never bearer values.
+	hashOnly bool
+}
 
 func (m *dbTokenManager) getKey(token string) string {
 	digest := sha256.Sum256([]byte(token))
@@ -73,7 +77,10 @@ func (m *dbTokenManager) getKey(token string) string {
 func (m *dbTokenManager) Add(token string, expiresAt time.Time) {
 	key := m.getKey(token)
 	data := map[string]string{
-		"jwt": token,
+		"revoked": "true",
+	}
+	if !m.hashOnly {
+		data["jwt"] = token
 	}
 	session := dataprovider.Session{
 		Key:       key,
@@ -87,6 +94,10 @@ func (m *dbTokenManager) Add(token string, expiresAt time.Time) {
 func (m *dbTokenManager) Get(token string) bool {
 	key := m.getKey(token)
 	_, err := dataprovider.GetSharedSession(key, dataprovider.SessionTypeInvalidToken)
+	if m.hashOnly && err != nil && !errors.Is(err, &util.RecordNotFoundError{}) {
+		// Do not accept a long session if revocation state cannot be read.
+		return true
+	}
 	return err == nil
 }
 

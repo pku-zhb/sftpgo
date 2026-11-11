@@ -1014,10 +1014,21 @@ func (s *httpdServer) checkCookieExpiration(w http.ResponseWriter, r *http.Reque
 	if claims.Username == "" || claims.Subject == "" {
 		return
 	}
-	if time.Until(claims.Expiry.Time()) > cookieRefreshThreshold {
+	duration := cookieTokenDuration
+	refreshThreshold := cookieRefreshThreshold
+	if claims.Audience.Contains(tokenAudienceWebClient) {
+		duration = getTokenDuration(tokenAudienceWebClient)
+		if duration > maxTokenDuration {
+			// Long cookies have a fixed lifetime from password login. Keeping
+			// the original token also keeps logout revocation unambiguous.
+			return
+		}
+		refreshThreshold = duration / 2
+	}
+	if time.Until(claims.Expiry.Time()) > refreshThreshold {
 		return
 	}
-	if (time.Since(claims.IssuedAt.Time()) + cookieTokenDuration) > maxTokenDuration {
+	if (time.Since(claims.IssuedAt.Time()) + duration) > maxTokenDuration {
 		return
 	}
 	if claims.Audience.Contains(tokenAudienceWebClient) {

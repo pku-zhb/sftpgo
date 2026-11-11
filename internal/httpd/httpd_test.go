@@ -413,6 +413,7 @@ func TestMain(m *testing.M) { //nolint:gocyclo
 
 	httpdConf := config.GetHTTPDConfig()
 
+	httpdConf.Bindings[0].Address = "127.0.0.1"
 	httpdConf.Bindings[0].Port = 8081
 	httpdConf.Bindings[0].Security = httpd.SecurityConf{
 		Enabled: true,
@@ -429,7 +430,8 @@ func TestMain(m *testing.M) { //nolint:gocyclo
 	sftpdConf := config.GetSFTPDConfig()
 	sftpdConf.Bindings = []sftpd.Binding{
 		{
-			Port: 8022,
+			Address: "127.0.0.1",
+			Port:    8022,
 		},
 	}
 	hostKeyPath := filepath.Join(os.TempDir(), "id_rsa")

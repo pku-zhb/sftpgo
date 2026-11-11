@@ -920,6 +920,10 @@ type Conf struct {
 	TokenValidation int `json:"token_validation" mapstructure:"token_validation"`
 	// CookieLifetime defines the duration of cookies for WebAdmin and WebClient
 	CookieLifetime int `json:"cookie_lifetime" mapstructure:"cookie_lifetime"`
+	// WebClientCookieLifetime optionally overrides only the WebClient cookie
+	// duration, in minutes. Zero keeps CookieLifetime; the maximum is 31 days.
+	// Values above 12 hours require a SQL provider for persistent revocation.
+	WebClientCookieLifetime int `json:"web_client_cookie_lifetime" mapstructure:"web_client_cookie_lifetime"`
 	// ShareCookieLifetime defines the duration of cookies for public shares
 	ShareCookieLifetime int `json:"share_cookie_lifetime" mapstructure:"share_cookie_lifetime"`
 	// JWTLifetime defines the duration of JWT tokens used in REST API
@@ -1088,9 +1092,24 @@ func (c *Conf) Initialize(configDir string, isShared int) error {
 	if err := c.loadFromProvider(); err != nil {
 		return err
 	}
+	updateTokensDuration(c.JWTLifetime, c.CookieLifetime, c.ShareCookieLifetime)
+	if err := configureWebClientCookieDuration(c.WebClientCookieLifetime); err != nil {
+		return err
+	}
 	logger.Info(logSender, "", "initializing HTTP server with config %+v", c.getRedacted())
 	configurationDir = configDir
 	invalidatedJWTTokens = newTokenManager(isShared)
+	if webClientCookieDuration > maxTokenDuration {
+		// SQLite also implements shared sessions, so a single-node deployment
+		// can preserve logout revocation without changing provider sharing mode.
+		switch dataprovider.GetProviderStatus().Driver {
+		case dataprovider.SQLiteDataProviderName, dataprovider.MySQLDataProviderName,
+			dataprovider.PGSQLDataProviderName, dataprovider.CockroachDataProviderName:
+			invalidatedJWTTokens = &dbTokenManager{hashOnly: true}
+		default:
+			return errors.New("long WebClient cookies require a SQL data provider")
+		}
+	}
 	resetCodesMgr = newResetCodeManager(isShared)
 	oidcMgr = newOIDCManager(isShared)
 	oauth2Mgr = newOAuth2Manager(isShared)
@@ -1160,7 +1179,6 @@ func (c *Conf) Initialize(configDir string, isShared int) error {
 	maxUploadFileSize = c.MaxUploadFileSize
 	installationCode = c.Setup.InstallationCode
 	installationCodeHint = c.Setup.InstallationCodeHint
-	updateTokensDuration(c.JWTLifetime, c.CookieLifetime, c.ShareCookieLifetime)
 	startCleanupTicker(10 * time.Minute)
 	c.setTokenValidationMode()
 	return <-exitChannel

@@ -55,7 +55,9 @@ const (
 var (
 	apiTokenDuration    = 20 * time.Minute
 	cookieTokenDuration = 20 * time.Minute
-	shareTokenDuration  = 2 * time.Hour
+	// A zero override retains the upstream WebClient duration.
+	webClientCookieDuration time.Duration
+	shareTokenDuration      = 2 * time.Hour
 	// csrf token duration is greater than normal token duration to reduce issues
 	// with the login form
 	csrfTokenDuration      = 4 * time.Hour
@@ -94,7 +96,12 @@ func getTokenDuration(audience tokenAudience) time.Duration {
 		return csrfTokenDuration
 	case tokenAudienceAPI, tokenAudienceAPIUser:
 		return apiTokenDuration
-	case tokenAudienceWebAdmin, tokenAudienceWebClient:
+	case tokenAudienceWebClient:
+		if webClientCookieDuration > 0 {
+			return webClientCookieDuration
+		}
+		return cookieTokenDuration
+	case tokenAudienceWebAdmin:
 		return cookieTokenDuration
 	case tokenAudienceWebAdminPartial, tokenAudienceWebClientPartial, tokenAudienceOAuth2:
 		return 5 * time.Minute
@@ -111,6 +118,9 @@ func getMaxCookieDuration() time.Duration {
 	}
 	if cookieTokenDuration > result {
 		result = cookieTokenDuration
+	}
+	if webClientCookieDuration > result {
+		result = webClientCookieDuration
 	}
 	return result
 }
@@ -405,7 +415,10 @@ func checkTokenSignature(r *http.Request, token *jwt.Claims) error {
 		return nil
 	}
 	var err error
-	if tokenValidationMode&tokenValidationModeUserSignature != 0 {
+	// Long WebClient sessions must become invalid immediately after an account
+	// update. Do not extend this policy to admin, API, share or OIDC sessions.
+	if tokenValidationMode&tokenValidationModeUserSignature != 0 ||
+		(webClientCookieDuration > maxTokenDuration && token.Audience.Contains(tokenAudienceWebClient)) {
 		for _, audience := range token.Audience {
 			switch audience {
 			case tokenAudienceAPI, tokenAudienceWebAdmin:
