@@ -234,6 +234,9 @@ func (s *httpdServer) handleClientWebLogin(w http.ResponseWriter, r *http.Reques
 		http.Redirect(w, r, webAdminSetupPath, http.StatusFound)
 		return
 	}
+	if s.redirectAuthenticatedWebClient(w, r) {
+		return
+	}
 	msg := getFlashMessage(w, r)
 	s.renderClientLoginPage(w, r, msg.getI18nError())
 }

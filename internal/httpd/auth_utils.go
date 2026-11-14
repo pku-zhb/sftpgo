@@ -144,12 +144,25 @@ func createAndSetCookie(w http.ResponseWriter, r *http.Request, claims *jwt.Clai
 	} else {
 		basePath = webBaseClientPath
 	}
-	setCookie(w, r, basePath, resp.Token, duration)
+	sameSite := http.SameSiteStrictMode
+	if audience == tokenAudienceWebClient {
+		// Android WebAPK cold launches are cross-site top-level navigations.
+		// Lax permits their safe GET without exposing sessions to cross-site
+		// subrequests or POSTs. Login/CSRF, admin and partial cookies stay Strict.
+		sameSite = http.SameSiteLaxMode
+	}
+	setCookieWithSameSite(w, r, basePath, resp.Token, duration, sameSite)
 
 	return nil
 }
 
 func setCookie(w http.ResponseWriter, r *http.Request, cookiePath, cookieValue string, duration time.Duration) {
+	setCookieWithSameSite(w, r, cookiePath, cookieValue, duration, http.SameSiteStrictMode)
+}
+
+func setCookieWithSameSite(w http.ResponseWriter, r *http.Request, cookiePath, cookieValue string,
+	duration time.Duration, sameSite http.SameSite,
+) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     jwt.CookieKey,
 		Value:    cookieValue,
@@ -158,7 +171,7 @@ func setCookie(w http.ResponseWriter, r *http.Request, cookiePath, cookieValue s
 		MaxAge:   int(duration / time.Second),
 		HttpOnly: true,
 		Secure:   isTLS(r),
-		SameSite: http.SameSiteStrictMode,
+		SameSite: sameSite,
 	})
 }
 

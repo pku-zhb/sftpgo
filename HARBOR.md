@@ -9,7 +9,12 @@ WebClient cookie duration in minutes, up to 44640 (31 days). Zero retains
 upstream behavior. Long sessions have a fixed expiry measured from login and
 are not silently extended. WebAdmin, API, share, partial authentication, OIDC
 and CSRF token lifetimes retain their original configuration and limits.
-Existing IP matching and Secure/HttpOnly/SameSite cookie behavior are unchanged.
+Authenticated WebClient cookies use SameSite=Lax, so Android WebAPK cold-launch
+top-level GET requests carry them. Secure and HttpOnly remain enabled on HTTPS.
+Login/CSRF, administrator, share and partial-authentication cookies retain
+SameSite=Strict. Visiting a saved WebClient login URL redirects a fully verified
+session to a safe files target instead of overwriting it with a login cookie.
+Invalid, expired, revoked or account-invalidated sessions still show the form.
 
 For a WebClient duration above 12 hours, startup requires a SQL provider and
 uses its existing shared-session table to persist revocations. Only SHA-256
@@ -19,8 +24,8 @@ password changes, disabling and deleting a user invalidate old cookies. No new
 schema or separate authentication service is introduced.
 
 Existing short cookies keep their original expiry. Sign out and sign in after
-deployment to receive the new 31-day cookie. A network/IP change can still
-require another login. The production signing key stays in Bitwarden and is
+deployment to receive the current 31-day Lax cookie. IP matching is controlled
+by the existing token_validation setting. The production signing key stays in Bitwarden and is
 injected only by the existing service launcher.
 
 Build outputs, Go modules, compiler caches and temporary files must be explicitly
